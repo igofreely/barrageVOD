@@ -13,6 +13,7 @@ using PotPlayerApiLib;
 using WinApiRemoteLib;
 using DouyuBarrage;
 using log4net;
+using System.Runtime.InteropServices;
 
 namespace barrageVOD
 {
@@ -22,14 +23,63 @@ namespace barrageVOD
         {
             InitializeComponent();
         }
+        string roomid;
+        CrawlerThread craw;
         IEnumerable<Process> processes;
         Process process;
         static PotPlayerRemote remote;
         static ILog log = log4net.LogManager.GetLogger(typeof(CrawlerThread));
         static Dictionary<int, DateTime> userlastDanmu;
         static HashSet<string> adminsset;
+        [DllImport("kernel32")]//返回0表示失败，非0为成功
+        private static extern long WritePrivateProfileString(string section, string key, string val, string filePath);
+        [DllImport("kernel32")]//返回取得字符串缓冲区的长度
+        private static extern long GetPrivateProfileString(string section, string key,
+            string def, StringBuilder retVal, int size, string filePath);
+        #region 读Ini文件
+
+        public static string ReadIniData(string Section, string Key, string NoText, string iniFilePath)
+        {
+            if (File.Exists(iniFilePath))
+            {
+                StringBuilder temp = new StringBuilder(1024);
+                GetPrivateProfileString(Section, Key, NoText, temp, 1024, iniFilePath);
+                return temp.ToString();
+            }
+            else
+            {
+                return String.Empty;
+            }
+        }
+
+        #endregion
+        #region 写Ini文件
+
+        public static bool WriteIniData(string Section, string Key, string Value, string iniFilePath)
+        {
+            if (File.Exists(iniFilePath))
+            {
+                long OpStation = WritePrivateProfileString(Section, Key, Value, iniFilePath);
+                if (OpStation == 0)
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        #endregion
         private void Form1_Load(object sender, EventArgs e)
         {
+            string filePath1 = Application.StartupPath + "\\config.ini";
+            roomid = ReadIniData("settings", "roomid","783827", filePath1);
+            textBox2.Text = roomid;
             processes = Process.GetProcesses().Where(t => t.ProcessName.ToLower().Contains("ai"));
             process = Process.GetProcesses().FirstOrDefault(t => t.ProcessName.StartsWith("PotPlayerMini64", StringComparison.CurrentCultureIgnoreCase));
             remote = new PotPlayerRemote(new ProcessWindow(process));
@@ -82,13 +132,21 @@ namespace barrageVOD
 
         private void button1_Click(object sender0, EventArgs e0)
         {
-            DouyuConfig.room = 783827;
+            string filePath1 = Application.StartupPath + "\\config.ini";
+            WriteIniData("setings", "roomid", textBox2.Text, filePath1);
+            int rid;
+            if(!int.TryParse(roomid, out rid))
+            {
+                MessageBox.Show("房间号不正确");
+                return;
+            }
+            DouyuConfig.room = rid;
             log4net.Config.XmlConfigurator.Configure();
             log.InfoFormat("弹幕捕获程序启动");
             AuthSocket auth = new AuthSocket();
             auth.OnReady += (sender, e) => {
 
-                CrawlerThread craw = new CrawlerThread(auth.DanmakuServers, auth.GID, auth.RID);
+                craw = new CrawlerThread(auth.DanmakuServers, auth.GID, auth.RID);
                 craw.DisConnectHandler += Craw_DisConnectHandler;
                 craw.ErrorHandler += Auth_ErrorHandler;
                 craw.LogHandler += Auth_LogHandler;
@@ -100,7 +158,7 @@ namespace barrageVOD
             auth.ErrorHandler += Auth_ErrorHandler;
             auth.LogHandler += Auth_LogHandler;
 
-            Console.Read();
+            //Console.Read();
         }
         private static void Craw_OnDanmaku(object sender, DanmakuEventArgs e)
         {
@@ -123,7 +181,7 @@ namespace barrageVOD
                 if (remote == null)
                     Console.WriteLine("未找到播放器");
                 int count = 0;
-                if (e.Danmaku.content.Substring(0, 3) == "#快进")
+                if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Substring(0, 3) == "#快进")
                 {
                     int.TryParse(e.Danmaku.content.Substring(3), out count);
                     if (count <= 100 && count > 0)
@@ -135,7 +193,7 @@ namespace barrageVOD
                         System.Threading.Thread.Sleep(500);
                     }
                 }
-                else if (e.Danmaku.content.Substring(0, 3) == "#快退")
+                else if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Length>3&&e.Danmaku.content.Substring(0, 3) == "#快退")
                 {
                     int.TryParse(e.Danmaku.content.Substring(3), out count);
                     if (count <= 100 && count > 0)
@@ -147,17 +205,17 @@ namespace barrageVOD
                         System.Threading.Thread.Sleep(500);
                     }
                 }
-                else if (e.Danmaku.content.Substring(0, 4) == "#上一集")
+                else if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Substring(0, 4) == "#上一集")
                 {
                     remote.PreviousFile();
                     System.Threading.Thread.Sleep(500);
                 }
-                else if (e.Danmaku.content.Substring(0, 4) == "#下一集")
+                else if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Substring(0, 4) == "#下一集")
                 {
                     remote.NextFile();
                     System.Threading.Thread.Sleep(500);
                 }
-                else if (e.Danmaku.content.Substring(0, 3) == "#上集")
+                else if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Substring(0, 3) == "#上集")
                 {
                     int.TryParse(e.Danmaku.content.Substring(3), out count);
                     if (count <= 10 && count > 0)
@@ -169,7 +227,7 @@ namespace barrageVOD
                         }
                     }
                 }
-                else if (e.Danmaku.content.Substring(0, 3) == "#下集")
+                else if (e.Danmaku.content.Length > 3 && e.Danmaku.content.Substring(0, 3) == "#下集")
                 {
                     int.TryParse(e.Danmaku.content.Substring(3), out count);
                     if (count <= 10 && count > 0)
@@ -202,7 +260,7 @@ namespace barrageVOD
         }
         private void button2_Click(object sender, EventArgs e)
         {
-
+            craw.DisConnect();
         }
 
         private void button3_Click(object sender, EventArgs e)
@@ -214,6 +272,12 @@ namespace barrageVOD
             psi.CreateNoWindow = true;
             psi.Arguments = filePath;
             Process.Start(psi);
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            string filePath1 = Application.StartupPath + "\\config.ini";
+            WriteIniData("settings", "roomid", textBox2.Text, filePath1);
         }
     }
 }
