@@ -135,7 +135,7 @@ namespace barrageVOD
             string filePath1 = Application.StartupPath + "\\config.ini";
             WriteIniData("setings", "roomid", textBox2.Text, filePath1);
             int rid;
-            if(!int.TryParse(roomid, out rid))
+            if(!int.TryParse(textBox2.Text, out rid))
             {
                 MessageBox.Show("房间号不正确");
                 return;
